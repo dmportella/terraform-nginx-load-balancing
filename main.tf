@@ -1,0 +1,64 @@
+# Configure the Docker provider
+provider "docker" {
+	host = "unix:///var/run/docker.sock"
+}
+
+# Create a container
+resource "docker_container" "backend" {
+	count = 3
+    image = "${docker_image.nginx.latest}"
+    name = "touchy-feely-${format("%02d", count.index+1)}"
+
+    volumes {
+		container_path  = "/usr/share/nginx/html"
+		host_path = "/home/dmportella/_volumes/nginx/touchy-feely"
+		read_only = true
+	}
+}
+
+resource "docker_container" "lb" {
+	depends_on = ["docker_container.backend"]
+
+    image = "${docker_image.nginx.latest}"
+    name = "touchy-feely-lb"
+
+    ports {
+    	external = 9090
+    	internal = 80
+    }
+
+    volumes {
+		container_path  = "/etc/nginx"
+		host_path = "/home/dmportella/_volumes/nginx/lb"
+		read_only = true
+	}
+
+	provisioner "local-exec" {
+		command = "echo \"${template_file.nginx_config.rendered}\" > nginx.conf && sudo cp nginx.conf /home/dmportella/_volumes/nginx/lb"
+	}
+}
+
+resource "docker_image" "nginx" {
+    name = "nginx:1.11.1"
+}
+
+resource "null_resource" "cassandra_provisioned" {
+	depends_on = ["docker_container.backend", "docker_container.lb"]
+	
+	provisioner "local-exec" {
+		command = "echo \"${template_file.nginx_config.rendered}\" > nginx.conf && sudo cp nginx.conf /home/dmportella/_volumes/nginx/lb && docker exec ${docker_container.lb.name} nginx -s reload"
+	}
+
+	triggers {
+		loadBalancer = "${docker_container.lb.ip_address}"
+    	cluster_servers = "${join(",", docker_container.backend.*.ip_address)}"
+	}
+}
+
+resource "template_file" "nginx_config" {
+    template = "${file("${path.module}/configs/nginx.tpl")}"
+
+    vars {
+        upstream_list = "${join(",", docker_container.backend.*.ip_address)}"
+    }
+}
