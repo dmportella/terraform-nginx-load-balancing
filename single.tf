@@ -9,9 +9,8 @@ resource "docker_image" "nginx" {
 
 # Create a container
 resource "docker_container" "backend" {
-count = 2
     image = "${docker_image.nginx.latest}"
-    name = "touchy-feely-${format("%02d", count.index+1)}"
+    name = "touchy-feely"
 
     ports {
     	external = 9090
