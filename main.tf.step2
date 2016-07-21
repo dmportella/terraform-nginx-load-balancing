@@ -5,7 +5,7 @@ provider "docker" {
 
 # Create a container
 resource "docker_container" "backend" {
-	count = 3
+	count = 5
     image = "${docker_image.nginx.latest}"
     name = "touchy-feely-${format("%02d", count.index+1)}"
 
